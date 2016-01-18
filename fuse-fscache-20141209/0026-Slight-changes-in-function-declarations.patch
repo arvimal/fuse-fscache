@@ -1,0 +1,58 @@
+From e07c044bae75481124217dfc4b5150aaf906acf9 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 30 Nov 2014 22:09:40 +0530
+Subject: [PATCH 26/35] Slight changes in function declarations
+
+---
+ fs/fuse/fscache.c |  2 +-
+ fs/fuse/fscache.h | 11 ++++++++++-
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 0d20aef..7153e8a 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -346,7 +346,7 @@ void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+ /* Set the inode cookie when a file is opened in fuse*/
+ /*****************************************************/
+ 
+-void fuse_fscache_set_inode_cookie(struct fuse_inode *fi, struct file *file)
++void fuse_fscache_set_inode_cookie(struct inode *inode, struct file *filp)
+ {
+ /* 'struct file' comes from 'fs/fuse/fscache.h' <- 'include/linux/fscache.h' <- 'include/linux/fs.h' */
+ 	if ((filp->f_flags & O_ACCMODE) != O_RDONLY)
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index 9963e69..b5cfdbd 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -28,6 +28,9 @@ extern void fuse_unregister_fscache(void);
+ extern void fuse_readpage_to_fscache(struct inode *inode,
+                                       struct page *page);
+ 
++extern void fuse_fscache_set_inode_cookie(struct inode *inode,
++						struct file *file);
++
+ #else /* CONFIG_FUSE_FSCACHE */
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+@@ -42,10 +45,16 @@ static inline void fuse_unregister_fscache(void)
+ 	return;
+ }
+ 
+-static inline fuse_readpage_to_fscache(struct inode *inode, struct page *page)
++static inline int fuse_readpage_to_fscache(struct inode *inode, struct page *page)
+ {
+ 	return 0;
+ }
++
++static inline void fuse_fscache_set_inode_cookie(struct fuse_inode *inode,
++							struct file *file)
++{
++	return;
++}
+ #endif /* CONFIG_FUSE_FSCACHE */
+ 
+ #endif /* _FS_FUSE_FSCACHE_H */
+-- 
+1.9.3
+

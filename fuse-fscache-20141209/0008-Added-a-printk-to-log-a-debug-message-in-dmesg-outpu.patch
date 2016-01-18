@@ -1,0 +1,27 @@
+From c39be2ed8a21df59bf8004eb09734751692cd016 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Thu, 27 Nov 2014 15:20:24 +0530
+Subject: [PATCH 08/35] Added a printk to log a debug message in 'dmesg'
+ output, to understand the opts, token etc..
+
+---
+ fs/fuse/inode.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index 633f179..2362d09 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -510,6 +510,9 @@ static int parse_fuse_opt(char *opt, struct fuse_mount_data *d, int is_bdev)
+ 
+ 		token = match_token(p, tokens, args);
+ 		switch (token) {
++
++		/* Debug for detecting the token while mounting with 'fsc' */
++		printk(KERN_WARNING "fuse: opt=%s, p=%s, token=%d\n", opt, p, token);
+ 		case OPT_FD:
+ 			if (match_int(&args[0], &value))
+ 				return 0;
+-- 
+1.9.3
+

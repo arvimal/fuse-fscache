@@ -1,0 +1,99 @@
+From 167fd68554a0e236d3d0befd601b0e544b0f0409 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 21:59:25 +0100
+Subject: [PATCH 18/35] (un)register fscache when an error occurs
+
+Also rename fuse_unregister_netfs() to fuse_unregister_cachefs().
+---
+ fs/fuse/fscache.c |  9 ++-------
+ fs/fuse/fscache.h |  4 ++--
+ fs/fuse/inode.c   | 14 +++++++-------
+ 3 files changed, 11 insertions(+), 16 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 14bd8cd..36b519b 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -330,12 +330,7 @@ int fuse_register_fscache(void)
+         return fscache_register_netfs(&fuse_cache_netfs);
+ }
+ 
+-void fuse_unregister_netfs(void)
++void fuse_unregister_fscache(void)
+ {
+-        return fscache_unregister_netfs(&fuse_cache_netfs);
++        fscache_unregister_netfs(&fuse_cache_netfs);
+ }
+-/* void fuse_unregister_netfs(void)
+- * {
+- *          fscache_unregister_netfs(&fuse_cache_netfs);
+- * }
+- */
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index 22e52c8..324c79a 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -24,7 +24,7 @@ extern struct fscache_netfs fuse_cache_netfs;
+ 
+ extern int fuse_register_fscache(void);
+ 
+-extern void fuse_unregister_netfs(void);
++extern void fuse_unregister_fscache(void);
+ 
+ extern void fuse_readpage_to_fscache(struct inode *inode,
+                                       struct page *page);
+@@ -35,7 +35,7 @@ extern void fuse_readpage_to_fscache(struct inode *inode,
+ 
+ extern int fuse_register_fscache(void);
+ 
+-extern void fuse_unregister_netfs(void);
++extern void fuse_unregister_fscache(void);
+ #endif /* CONFIG_FUSE_FSCACHE */
+ 
+ #endif /* _FS_FUSE_FSCACHE_H */
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index e72f764..f672b56 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -1327,19 +1327,21 @@ static int __init fuse_init(void)
+ 	if (res)
+ 		goto err_dev_cleanup;
+ 
+-	res = fuse_ctl_init();
++	res = fuse_register_fscache();
+ 	if (res)
+ 		goto err_sysfs_cleanup;
+ 
+-
+-        /* Registering the fuse-fscache index */
+-        fuse_register_fscache();
++	res = fuse_ctl_init();
++	if (res)
++		goto err_fscache_cleanup;
+ 
+         sanitize_global_limit(&max_user_bgreq);
+ 	sanitize_global_limit(&max_user_congthresh);
+         
+ 	return 0;
+ 
++ err_fscache_cleanup:
++        fuse_unregister_fscache();
+  err_sysfs_cleanup:
+ 	fuse_sysfs_cleanup();
+  err_dev_cleanup:
+@@ -1353,11 +1355,9 @@ static int __init fuse_init(void)
+ static void __exit fuse_exit(void)
+ {
+ 	printk(KERN_DEBUG "fuse exit\n");
+-        
+-        /* Un-registering the fuse-fscache index */
+-        fuse_unregister_netfs();
+ 
+ 	fuse_ctl_cleanup();
++	fuse_unregister_fscache();
+ 	fuse_sysfs_cleanup();
+ 	fuse_fs_cleanup();
+ 	fuse_dev_cleanup();
+-- 
+1.9.3
+

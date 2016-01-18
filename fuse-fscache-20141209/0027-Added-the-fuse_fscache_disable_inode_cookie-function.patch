@@ -1,0 +1,32 @@
+From c6c625085906b99f3aa6abb232a9b7cb92902716 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Mon, 1 Dec 2014 00:09:42 +0530
+Subject: [PATCH 27/35] Added the fuse_fscache_disable_inode_cookie() function
+
+---
+ fs/fuse/fscache.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 7153e8a..86e1a13 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -317,8 +317,14 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+ /* d) Disable the cookie for the third index level, ie.. the inode/fsid */
+ static void fuse_fscache_disable_inode_cookie(struct inode *inode) 
+ {
+-
++	struct fuse_inode *fi = get_fuse_inode(inode);
++	if (fi->fscache) {
++		fscache_uncache_all_inode_pages(fi->fscache, inode);
++                fscache_relinquish_cookie(fi->fscache, 1);
++                fi->fscache = NULL;
++        }
+ }
++
+ /***************************************/
+ /* Read the page to the fscache cookie */
+ /***************************************/
+-- 
+1.9.3
+

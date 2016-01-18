@@ -1,0 +1,286 @@
+From accbc85bcead13de81e4bd42feafdafbe14ba179 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 23 Nov 2014 19:00:57 +0530
+Subject: [PATCH 05/35] Functions for index levels
+
+---
+ fs/fuse/fscache.c | 144 +++++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 115 insertions(+), 29 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index ea4fe99..e850850 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -11,6 +11,7 @@
+ 
+ #include <linux/fscache.h>
+ #include "fuse_i.h"
++#include <linux/fs.h>
+ 
+ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t buflen);
+@@ -38,14 +39,18 @@ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+ 						     uint16_t buflen);
+ static void fuse_fh_cache_now_uncached(void *cookie_netfs_data);
+ 
+-/* top level index */
++/* 1st level index. This is created by fscache automatically,
++ * and is set to what we have in '.name'
++*/
+ struct fscache_netfs fuse_cache_netfs = {
+ 	.name			= "fuse",
+ 	.version		= 0,
+ };
+ 
+-/* 1st level index, based on the fuse sub-filesystem. The index separates the
+- * different processes like 'glusterfs' or 'sshfs'. */
++/* 2st level index, based on the fuse sub-filesystem. The index separates the
++ * different processes like 'glusterfs' or 'sshfs'. 
++ * This should return 'fuse.glusterfs'
++ */
+ struct fscache_cookie_def fuse_subfs_cache_index_def = {
+ 	.name		= "fuse.subfs",
+ 	.type		= FSCACHE_COOKIE_TYPE_INDEX,
+@@ -54,8 +59,9 @@ struct fscache_cookie_def fuse_subfs_cache_index_def = {
+ 	.check_aux	= fuse_fs_cache_check_aux,
+ };
+ 
+-/* 2nd level index for the source of the mountpoint. For GlusterFS this is the
+- * volumeid (a UUID). */
++/* 3rd level index for the source of the mountpoint. For GlusterFS this is the
++ * volumeid (a UUID). 
++ */
+ struct fscache_cookie_def fuse_mnt_cache_index_def = {
+ 	.name			= "fuse.mnt",
+ 	.type			= FSCACHE_COOKIE_TYPE_INDEX,
+@@ -64,7 +70,7 @@ struct fscache_cookie_def fuse_mnt_cache_index_def = {
+ 	.check_aux		= fuse_mnt_cache_check_aux,
+ };
+ 
+-/* The 3rd level index based on the handle. GlusterFS uses the GFID (a UUID
++/* The 4th level index based on the handle. GlusterFS uses the GFID (a UUID
+  * comparable to a volume-wide inode) for this. */
+ struct fscache_cookie_def fuse_fh_cache_index_def = {
+ 	.name			= "fuse.fh",
+@@ -86,19 +92,34 @@ struct fuse_fscache_mnt_key {
+ 	char *fsid;	/* filesystem ID, like volume-id in Gluster */
+ };
+ 
++struct fuse_fscache_fh_key {
++        char *fh;       /* GFID for glusterfs, or the inode */
++};
++
++/****************************************/
++/* Functions for the 2nd index level    */
+ /****************************************/
+-/* Functions for the first index level  */
+-/**((************************************/
+ 
+ /* a) Set the key for the index entry */
+ 
+ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+-	const struct fuse_conn *fc = cookie_netfs_data;
++/* This will create the 2nd level index, will fill 'buffer' 
++ * with the string 'fuse.glusterfs', and return its length
++ */
++        const struct fuse_conn *fc = cookie_netfs_data;
+ 
+-	/* TODO: fill buffer with a struct fuse_fscache_subfs_key */
+-	return 0;
++        /* "klen" will contain the length of the key */
++        uint16_t klen;
++        klen = strlen(fc->sb->s_subtype); 
++
++        /* Copy the contents of 'fc->sb->s_subtype' to 'buffer'
++         * 'buffer' should contain 'fuse.glusterfs'.
++         */
++        memcpy(buffer, fc->sb->s_subtype, klen);
++
++        return klen;
+ }
+ 
+ /* b) Provide new auxiliary cache data */
+@@ -119,15 +140,37 @@ static enum fscache_checkaux fuse_fs_cache_check_aux(void *cookie_netfs_data,
+ }
+ 
+ /****************************************************/
+-/* Functions for the second index level (Volume ID) */ 
++/* Functions for the 3rd index level (Volume ID)    */
+ /****************************************************/
+ 
+-/* a) Set the key for the second level index entry (with GFID) */
++/* a) Set the key for the second level index entry  */
+ 
+ static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
+-				       void *buffer, uint16_t bufmax)
++                                        void *buffer, uint16_t bufmax)
+ {
+-	return 0;
++
++/* We'll use a fixed volume-id for now, since we don't have a 
++ * singular way to get it from fuse   
++ */
++
++/* We'll use the following UUID for now, it's mountable locally.
++ * # gluster volume info 
++ *  Volume Name: vol1
++ *  Type: Distribute
++ *  Volume ID: c753e3fe-ffa1-4d44-8aef-71ae9da41925
++ *  Status: Started
++ *  Snap Volume: no
++ *  Number of Bricks: 2
++ *  Transport-type: tcp
++ *  Bricks:
++ *  Brick1: 10.65.209.229:/bricks/vol1
++ *  Brick2: 10.65.210.12:/bricks/vol1
++ */
++
++        char* uuid = "c753e3fe-ffa1-4d44-8aef-71ae9da41925";
++        int uuidlen = strlen(uuid);
++        memcpy(buffer, uuid, uuidlen);
++        return uuidlen; 
+ }
+ 
+ /* b) Provide new auxiliary cache data  */
+@@ -150,7 +193,7 @@ static enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ }
+ 
+ /***********************************************/
+-/* Functions for the third index level (GFID   */
++/* Functions for the 4th index level (GFID)    */
+ /***********************************************/
+ 
+ /* a) Set the key for the third level index entry (File handle) */
+@@ -158,12 +201,17 @@ static enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+-	const struct fuse_inode *fi = cookie_netfs_data;
+-
+ 	/* TODO: fill buffer with fi->orig_ino, GFID in future?
+ 	 *       Error out if not set
+ 	 */
+-	return 0;
++	const struct fuse_inode *fi = cookie_netfs_data;
++
++        int64_t fhlen;
++        fhlen = strlen(fi->orig_ino);
++        
++        memcpy(buffer, fi->orig_ino, fhlen);
++        return fhlen;
++
+ }
+ 
+ /* b) Provide updated file attributes */
+@@ -171,6 +219,15 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ static void fuse_fh_cache_get_attr(const void *cookie_netfs_data,
+ 				   uint64_t *size)
+ {
++        /* What sort of attributes are we looking for here?
++         * From the args, it seems to be the size. 	
++         * We have a struct 'iattr' which has inode size and
++         * other attrtibutes, in /include/linux/fs.h
++         */
++        /* Check if the size of '*size' and 'inode_attr->ia_size' are same.
++         */
++        const struct iattr *inode_attr = cookie_netfs_data;
++        *size = inode_attr->ia_size;
+ }
+ 
+ /* c) Provide new auxiliary cache data */
+@@ -190,51 +247,80 @@ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+ 	return FSCACHE_CHECKAUX_OKAY;
+ }
+ 
+-/* e) 
+- * indication the cookie is no longer uncached
+- * - this function is called when the backing store currently caching a cookie
++/* e) This indicates that the cookie is no longer cached */
++/* - This function is called when the backing store currently caching a cookie
+  *   is removed
+- * - the netfs should use this to clean up any markers indicating cached pages
+- * - this is mandatory for any object that may have data
++ * - The netfs should use this to clean up any markers indicating cached pages
++ * - This is mandatory for any object that may have data
+  */
+ static void fuse_fh_cache_now_uncached(void *cookie_netfs_data)
+ {
++	return 0; /*for now*/
+ }
+ 
++/***********************************/
++/* Get cookies for each index level*/
++/***********************************/
++
++/* a) Construct a cookies for the initial index, ie.. glusterfs FS level */
++/* NOTE: This will need the extension of the struct 'fuse_conn' from 'fuse_i.h'
++
++/* We'd need to create a new member in the fuse_conn struct, to return the cookie*/
++/* The new member is fscache.subfs */
++
+ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
++/* This function takes the struct fuse_conn (via a pointer)
++ * as its argument and should return the cookie for fuse.glusterfs*/
+ {
+ 	fc->fscache.subfs = fscache_acquire_cookie(
+ 				fuse_cache_netfs.primary_index,
+ 				&fuse_subfs_cache_index_def, fc, true);
++	return 0;
+ }
+ 
++/* b) Construct a cookie for the second index level, ie.. the mount point or vol-id*/
++/* NOTE: This will need the extension of 'fuse_conn', as done in the initial index  */
++/* The new member is fscache.net */
++
+ void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
+ {
+ 	fc->fscache.mnt = fscache_acquire_cookie(fc->fscache.subfs,
+ 				&fuse_mnt_cache_index_def, fc, true);
++	return 0;
+ }
+ 
++/* c) Construct a cookie for the third index level, ie.. the inode/fsid */
+ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+ {
+ 	struct fuse_inode *fi = get_fuse_inode(inode);
+ 	struct fuse_conn *fc = get_fuse_conn_super(inode->i_sb);
+ 
++	/* First extension to fuse_inode for fscache*/
+ 	if (fi->fscache)
+ 		return;
+-
++	
+ 	if (fc->flags & FUSE_MOUNT_FSCACHE) {
+ 		fi->fscache = fscache_acquire_cookie(fc->fscache.mnt,
+ 				&fuse_fh_cache_index_def, fi, true);
+ 	}
+ }
+ 
+-/* ########################## */
++/******************************************/
++/* Register/Unregister the netfs
++ ******************************************/
+ 
+-/* Registering the netfs */
+-ret = fscache_register_netfs(&fuse_cache_netfs);
++/* a) Registering the netfs */
+ 
++void fscache_register_netfs(&fuse_cache_netfs) {
++	return 0;
++}
+ 
+-/* Netfs un-registration: */
++
++/* b) Unregister the netfs  */
++
++void fscache_unregister_netfs(struct fscache_netfs *netfs) {
++	return 0;
++}
+ 
+ 
+ /* Index registration for fuse_fscache */
+-- 
+1.9.3
+

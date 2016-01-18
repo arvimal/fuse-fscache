@@ -1,0 +1,155 @@
+From 6788c7ef5fc59dff5e1b1781fd718fc334d1a3bc Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 18:38:46 +0100
+Subject: [PATCH 28/35] add fuse_readpages_from_fscache()
+
+TODO: verify if these are all usages, or if there are more calls to
+fuse_readpages_from_fscache() needed somewhere.
+---
+ fs/fuse/file.c    | 17 +++++++++++++++--
+ fs/fuse/fscache.c | 45 +++++++++++++++++++++++++++++++++++++++++++++
+ fs/fuse/fscache.h | 28 +++++++++++++++++++++++++++-
+ 3 files changed, 87 insertions(+), 3 deletions(-)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index eb82f71..6707425 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -825,10 +825,12 @@ static void fuse_readpages_end(struct fuse_conn *fc, struct fuse_req *req)
+ 	}
+ 
+ 	for (i = 0; i < req->num_pages; i++) {
++		struct inode *inode = mapping->host;
+ 		struct page *page = req->pages[i];
+-		if (!req->out.h.error)
++		if (!req->out.h.error) {
+ 			SetPageUptodate(page);
+-		else
++			fuse_readpage_to_fscache(inode, page);
++		} else
+ 			SetPageError(page);
+ 		unlock_page(page);
+ 		page_cache_release(page);
+@@ -921,6 +923,17 @@ static int fuse_readpages(struct file *file, struct address_space *mapping,
+ 	if (is_bad_inode(inode))
+ 		goto out;
+ 
++	/*
++	 * Reads as many pages as possible from fscache. Returns -ENOBUFS
++	 * immediately if the cookie is negative
++	 *
++	 * After this point, every page in the list might have PG_fscache set,
++	 * so we will need to clean that up off of every page we don't use.
++	 */
++	err = fuse_readpages_from_fscache(inode, mapping, pages, &nr_pages);
++	if (err == 0)
++		return err;
++
+ 	data.file = file;
+ 	data.inode = inode;
+ 	if (fc->async_read)
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 86e1a13..3ed033d 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -347,6 +347,51 @@ void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+ 		__fuse_readpage_to_fscache(inode, page);
+ }
+ 
++static void fuse_readpage_from_fscache_complete(struct page *page, void *ctx,
++						int error)
++{
++	printk(KERN_DEBUG "%s: (0x%p/%d)\n", __func__, page, error);
++	if (!error)
++		SetPageUptodate(page);
++	unlock_page(page);
++}
++
++/*
++ * Retrieve a set of pages from FS-Cache
++ */
++int __fuse_readpages_from_fscache(struct inode *inode,
++				struct address_space *mapping,
++				struct list_head *pages,
++				unsigned *nr_pages)
++{
++	int ret;
++	struct fuse_inode *fi = get_fuse_inode(inode);
++
++	printk(KERN_DEBUG "%s: (0x%p/%u/0x%p)\n", __func__,
++	       fi->fscache, *nr_pages, inode);
++
++	ret = fscache_read_or_alloc_pages(fi->fscache, mapping,
++					  pages, nr_pages,
++					  fuse_readpage_from_fscache_complete,
++					  NULL,
++					  mapping_gfp_mask(mapping));
++	switch (ret) {
++	case 0:	/* read submitted to the cache for all pages */
++		printk(KERN_DEBUG "%s: submitted\n", __func__);
++		return ret;
++
++	case -ENOBUFS:	/* some pages are not cached and can't be */
++	case -ENODATA:	/* some pages are not cached */
++		printk(KERN_DEBUG "%s: no page\n", __func__);
++		return 1;
++
++	default:
++		printk(KERN_DEBUG "unknown error ret = %d\n", ret);
++	}
++
++	return ret;
++}
++
+ 
+ /*****************************************************/
+ /* Set the inode cookie when a file is opened in fuse*/
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index b5cfdbd..369f83e 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -31,6 +31,24 @@ extern void fuse_readpage_to_fscache(struct inode *inode,
+ extern void fuse_fscache_set_inode_cookie(struct inode *inode,
+ 						struct file *file);
+ 
++extern int __fuse_readpages_from_fscache(struct inode *inode, struct
++					 address_space *mapping,
++					 struct list_head *pages,
++					 unsigned *nr_pages);
++
++static inline int fuse_readpages_from_fscache(struct inode *inode,
++					      struct address_space *mapping,
++					      struct list_head *pages,
++					      unsigned *nr_pages)
++{
++	struct fuse_inode *fi = get_fuse_inode(inode);
++
++	if (fi->fscache)
++		return __fuse_readpages_from_fscache(inode, mapping, pages,
++						     nr_pages);
++	return -ENOBUFS;
++}
++
+ #else /* CONFIG_FUSE_FSCACHE */
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+@@ -47,7 +65,15 @@ static inline void fuse_unregister_fscache(void)
+ 
+ static inline int fuse_readpage_to_fscache(struct inode *inode, struct page *page)
+ {
+-	return 0;
++	return -ENOTSUP;
++}
++
++static inline int fuse_readpages_from_fscache(struct inode *inode,
++					      struct address_space *mapping,
++					      struct list_head *pages,
++					      unsigned *nr_pages)
++{
++	return -ENOTSUP;
+ }
+ 
+ static inline void fuse_fscache_set_inode_cookie(struct fuse_inode *inode,
+-- 
+1.9.3
+

@@ -1,0 +1,36 @@
+From d1e99d8c475bbbbf7ddcf73367dd018fd87236fd Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 21:27:28 +0100
+Subject: [PATCH 16/35] move fuse_readpage_to_fscache() to fuse_do_readpage()
+
+---
+ fs/fuse/file.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index 69fc050..f8df76b 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -772,6 +772,9 @@ static int fuse_do_readpage(struct file *file, struct page *page)
+ 			fuse_short_read(req, inode, attr_ver);
+ 
+ 		SetPageUptodate(page);
++
++		/* Add the page to fscache */
++		fuse_readpage_to_fscache(inode, page);
+ 	}
+ 
+ 	fuse_put_request(fc, req);
+@@ -787,9 +790,6 @@ static int fuse_readpage(struct file *file, struct page *page)
+ 	err = -EIO;
+ 	if (is_bad_inode(inode))
+ 		goto out;
+-	
+-	/*Add the page to fscache, here??*/
+-        fuse_readpage_to_fscache(inode, page);
+ 
+ 	err = fuse_do_readpage(file, page);
+ 	fuse_invalidate_atime(inode);
+-- 
+1.9.3
+

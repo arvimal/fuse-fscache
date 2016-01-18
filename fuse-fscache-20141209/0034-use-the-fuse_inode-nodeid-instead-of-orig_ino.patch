@@ -1,0 +1,39 @@
+From a357b63b146b99a76438b7be09f4feb790720fbd Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 23:42:47 +0100
+Subject: [PATCH 34/35] use the fuse_inode->nodeid instead of orig_ino
+
+---
+ fs/fuse/fscache.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 5732df1..661d97d 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -211,7 +211,7 @@ static enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ 
+ /* a) Set the key for the third level index entry (File handle)
+  *
+- * TODO: Fill buffer with fi->orig_ino, GFID in future?
++ * TODO: Fill buffer with fi->nodeid, GFID in future?
+  */
+ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+@@ -220,10 +220,12 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 	struct fuse_fscache_fh_key *key = buffer;
+ 	uint16_t fhlen = sizeof(struct fuse_fscache_fh_key);
+ 
++	printk(KERN_WARNING "%s: fuse_inode->nodeid = %lld\n", __func__, fi->nodeid);
++
+ 	if (fhlen > bufmax)
+ 		return 0;
+ 
+-	key->ino = fi->orig_ino;
++	key->ino = fi->nodeid;
+ 
+ 	return fhlen;
+ }
+-- 
+1.9.3
+

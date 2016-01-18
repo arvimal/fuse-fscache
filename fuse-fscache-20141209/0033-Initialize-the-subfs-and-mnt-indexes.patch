@@ -1,0 +1,95 @@
+From 1d17b0fd86fa27a378cd80b744a806e2aad3ba04 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 23:41:53 +0100
+Subject: [PATCH 33/35] Initialize the subfs and mnt indexes
+
+---
+ fs/fuse/fscache.c | 26 +++++++++++++++++++++++---
+ fs/fuse/inode.c   |  6 ++++++
+ 2 files changed, 29 insertions(+), 3 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 513f4c2..5732df1 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -288,8 +288,16 @@ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
+ 				fuse_cache_netfs.primary_index,
+ 				&fuse_subfs_cache_index_def, fc, true);
+ 
++	printk(KERN_WARNING "%s: cookie set to %p\n", __func__, fc->fscache.subfs);
+ }
+ 
++void fuse_fscache_release_subfs_cookie(struct fuse_conn *fc)
++{
++	fscache_relinquish_cookie(fc->fscache.subfs, 0);
++	fc->fscache.subfs = NULL;
++}
++
++
+ /* b) Construct a cookie for the second index level, ie.. the mount point or vol-id*/
+ 
+ void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
+@@ -297,21 +305,33 @@ void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
+ 	fc->fscache.mnt = fscache_acquire_cookie(fc->fscache.subfs,
+ 				&fuse_mnt_cache_index_def, fc, true);
+ 
++	printk(KERN_WARNING "%s: cookie set to %p\n", __func__, fc->fscache.mnt);
++}
++
++void fuse_fscache_release_mnt_cookie(struct fuse_conn *fc)
++{
++	fscache_relinquish_cookie(fc->fscache.mnt, 0);
++	fc->fscache.mnt = NULL;
+ }
+ 
++
+ /* c) Construct a cookie for the third index level, ie.. the inode/fsid */
+ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+ {
+ 	struct fuse_inode *fi = get_fuse_inode(inode);
+ 	struct fuse_conn *fc = get_fuse_conn_super(inode->i_sb);
+ 
+-	if (fi->fscache)
++	if (fi->fscache) {
++		printk(KERN_WARNING "%s: cookie already set to %p\n", __func__, fi->fscache);
+ 		return;
+-	
++	}
++
+ 	if (fc->flags & FUSE_MOUNT_FSCACHE) {
+ 		fi->fscache = fscache_acquire_cookie(fc->fscache.mnt,
+ 				&fuse_fh_cache_index_def, fi, true);
+- 	}
++		printk(KERN_WARNING "%s: cookie set to %p\n", __func__, fi->fscache);
++ 	} else
++		printk(KERN_WARNING "%s: fscache is not enabled\n", __func__);
+ }
+ 
+ /* d) Disable the cookie for the third index level, ie.. the inode/fsid */
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index 7549f16..a2d87b0 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -1076,6 +1076,9 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
+ 
+ 	sb->s_bdi = &fc->bdi;
+ 
++	fuse_fscache_get_subfs_cookie(fc);
++	fuse_fscache_get_mnt_cookie(fc);
++
+ 	/* Handle umasking inside the fuse code */
+ 	if (sb->s_flags & MS_POSIXACL)
+ 		fc->dont_mask = 1;
+@@ -1161,6 +1164,9 @@ static void fuse_kill_sb_anon(struct super_block *sb)
+ 	struct fuse_conn *fc = get_fuse_conn_super(sb);
+ 
+ 	if (fc) {
++		fuse_fscache_release_mnt_cookie(fc);
++		fuse_fscache_release_subfs_cookie(fc);
++
+ 		down_write(&fc->killsb);
+ 		fc->sb = NULL;
+ 		up_write(&fc->killsb);
+-- 
+1.9.3
+

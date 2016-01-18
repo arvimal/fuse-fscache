@@ -1,0 +1,316 @@
+From d2a4af24aa5e00fbf637550113b078488a54b51d Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Wed, 8 Oct 2014 00:27:15 +0200
+Subject: [PATCH 01/35] fuse: initial skeleton for FS-Cache support
+
+Files for building:
+- fs/fuse/Makefile
+    Build a fs/fuse/fscache.o when CONFIG_FUSE_FSCACHE is enabled. The
+    build infrastructure automatically links this into fuse.ko.
+
+- fs/fuse/Kconfig
+    Add a CONFIG_FUSE_FSCACHE configuration option. This can only be
+    selected if FUSE and FSCACHE are enabled.
+
+New files:
+- fs/fuse/fscache.h
+    should contain the 'API' that the existing fuse files can use. This
+    .h file only contains the declarations of functions and needed
+    structures. Small inline functions can get included in the fscache.h
+    file too.
+
+    By providing empty functions when CONFIG_FUSE_FSCACHE is not set, it
+    is possible for the existing fuse files to include "fscache.h" and
+    call the functions. This makes is cleaner to integrate this new
+    functionality (no new #ifdef contructs in the existing sources).
+
+    See fs/cifs/fscache.h for more examples.
+
+- fs/fuse/fscache.c
+    actual implementation of the functions and structures. Any function
+    that need to be called from the existing sources should get it's
+    declaration in fs/fuse/fscache.h.
+
+    This has been based on fs/afs/cache.c which seems to be a smaller
+    implementation than the fs-cache in nfs.
+---
+ fs/fuse/Kconfig   |   9 +++
+ fs/fuse/Makefile  |   1 +
+ fs/fuse/fscache.c | 183 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ fs/fuse/fscache.h |  44 +++++++++++++
+ 4 files changed, 237 insertions(+)
+ create mode 100644 fs/fuse/fscache.c
+ create mode 100644 fs/fuse/fscache.h
+
+diff --git a/fs/fuse/Kconfig b/fs/fuse/Kconfig
+index 1b2f6c2..49d5e30 100644
+--- a/fs/fuse/Kconfig
++++ b/fs/fuse/Kconfig
+@@ -16,6 +16,15 @@ config FUSE_FS
+ 	  If you want to develop a userspace FS, or if you want to use
+ 	  a filesystem based on FUSE, answer Y or M.
+ 
++config FUSE_FSCACHE
++	bool "FS-Cache support for FUSE (EXPERIMENTAL)"
++	depends on FUSE_FS && FSCACHE
++	help
++	  FS-Cache for FUSE.
++
++	  See <file:Documentation/filesystems/caching/fscache.txt> for more
++	  information.
++	
+ config CUSE
+ 	tristate "Character device in Userspace support"
+ 	depends on FUSE_FS
+diff --git a/fs/fuse/Makefile b/fs/fuse/Makefile
+index e95eeb4..32edc06 100644
+--- a/fs/fuse/Makefile
++++ b/fs/fuse/Makefile
+@@ -5,4 +5,5 @@
+ obj-$(CONFIG_FUSE_FS) += fuse.o
+ obj-$(CONFIG_CUSE) += cuse.o
+ 
++fuse-$(CONFIG_FUSE_FSCACHE) += fscache.o
+ fuse-objs := dev.o dir.o file.o inode.o control.o
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+new file mode 100644
+index 0000000..6b0b264
+--- /dev/null
++++ b/fs/fuse/fscache.c
+@@ -0,0 +1,183 @@
++/*
++ * FS-Cache for FUSE - based on fs/afs/cache.c
++ * Copyright (C) 2014 Vimal Kumar <arvimal@yahoo.in> and
++ *                    Niels de Vos <ndevos@redhat.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++*/
++
++#include <linux/fscache.h>
++#include "fuse_i.h"
++
++static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
++				      void *buffer, uint16_t buflen);
++static uint16_t fuse_fs_cache_get_aux(const void *cookie_netfs_data,
++				      void *buffer, uint16_t buflen);
++static enum fscache_checkaux fuse_fs_cache_check_aux(void *cookie_netfs_data,
++						     const void *buffer,
++						     uint16_t buflen);
++
++static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
++					    void *buffer, uint16_t buflen);
++static uint16_t fuse_mnt_cache_get_aux(const void *cookie_netfs_data,
++					    void *buffer, uint16_t buflen);
++static enum fscache_checkaux fuse_mnt_cache_check_aux(
++	void *cookie_netfs_data, const void *buffer, uint16_t buflen);
++
++static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
++				      void *buffer, uint16_t buflen);
++static void fuse_fh_cache_get_attr(const void *cookie_netfs_data,
++				   uint64_t *size);
++static uint16_t fuse_fh_cache_get_aux(const void *cookie_netfs_data,
++				      void *buffer, uint16_t buflen);
++static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
++						     const void *buffer,
++						     uint16_t buflen);
++static void fuse_fh_cache_now_uncached(void *cookie_netfs_data);
++
++/* top level index */
++struct fscache_netfs fuse_cache_netfs = {
++	.name			= "fuse",
++	.version		= 0,
++};
++
++/* 1st level index, based on the fuse sub-filesystem. The index separates the
++ * different processes like 'glusterfs' or 'sshfs'. */
++struct fscache_cookie_def fuse_subfs_cache_index_def = {
++	.name		= "fuse.subfs",
++	.type		= FSCACHE_COOKIE_TYPE_INDEX,
++	.get_key	= fuse_fs_cache_get_key,
++	.get_aux	= fuse_fs_cache_get_aux,
++	.check_aux	= fuse_fs_cache_check_aux,
++};
++
++/* 2nd level index for the source of the mountpoint. For GlusterFS this is the
++ * volumeid (a UUID). */
++struct fscache_cookie_def fuse_mount_cache_index_def = {
++	.name			= "fuse.mnt",
++	.type			= FSCACHE_COOKIE_TYPE_INDEX,
++	.get_key		= fuse_mnt_cache_get_key,
++	.get_aux		= fuse_mnt_cache_get_aux,
++	.check_aux		= fuse_mnt_cache_check_aux,
++};
++
++/* The 3rd level index based on the handle. GlusterFS uses the GFID (a UUID
++ * comparable to a volume-wide inode) for this. */
++struct fscache_cookie_def fuse_fh_cache_index_def = {
++	.name			= "fuse.fh",
++	.type			= FSCACHE_COOKIE_TYPE_DATAFILE,
++	.get_key		= fuse_fh_cache_get_key,
++	.get_attr		= fuse_fh_cache_get_attr,
++	.get_aux		= fuse_fh_cache_get_aux,
++	.check_aux		= fuse_fh_cache_check_aux,
++	.now_uncached		= fuse_fh_cache_now_uncached,
++};
++
++/*
++ * set the key for the index entry
++ */
++static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
++				      void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * provide new auxiliary cache data
++ */
++static uint16_t fuse_fs_cache_get_aux(const void *cookie_netfs_data,
++				      void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * check that the auxiliary data indicates that the entry is still valid
++ */
++static enum fscache_checkaux fuse_fs_cache_check_aux(void *cookie_netfs_data,
++						     const void *buffer,
++						     uint16_t buflen)
++{
++	return FSCACHE_CHECKAUX_OKAY;
++}
++
++/*****************************************************************************/
++/*
++ * set the key for the index entry
++ */
++static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
++				       void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * provide new auxiliary cache data
++ */
++static uint16_t fuse_mnt_cache_get_aux(const void *cookie_netfs_data,
++				       void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * check that the auxiliary data indicates that the entry is still valid
++ */
++static
++enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
++					       const void *buffer,
++					       uint16_t buflen)
++{
++	return FSCACHE_CHECKAUX_OKAY;
++}
++
++/*****************************************************************************/
++/*
++ * set the key for the index entry
++ */
++static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
++				      void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * provide updated file attributes
++ */
++static void fuse_fh_cache_get_attr(const void *cookie_netfs_data,
++				   uint64_t *size)
++{
++}
++
++/*
++ * provide new auxiliary cache data
++ */
++static uint16_t fuse_fh_cache_get_aux(const void *cookie_netfs_data,
++				      void *buffer, uint16_t bufmax)
++{
++	return 0;
++}
++
++/*
++ * check that the auxiliary data indicates that the entry is still valid
++ */
++static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
++						     const void *buffer,
++						     uint16_t buflen)
++{
++	return FSCACHE_CHECKAUX_OKAY;
++}
++
++/*
++ * indication the cookie is no longer uncached
++ * - this function is called when the backing store currently caching a cookie
++ *   is removed
++ * - the netfs should use this to clean up any markers indicating cached pages
++ * - this is mandatory for any object that may have data
++ */
++static void fuse_fh_cache_now_uncached(void *cookie_netfs_data)
++{
++}
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+new file mode 100644
+index 0000000..fd4ed60
+--- /dev/null
++++ b/fs/fuse/fscache.h
+@@ -0,0 +1,44 @@
++/*
++ * FS-Cache for FUSE - based on fs/afs/cache.c
++ * Copyright (C) 2014 Vimal Kumar <arvimal@yahoo.in> and
++ *                    Niels de Vos <ndevos@redhat.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * as published by the Free Software Foundation; either version
++ * 2 of the License, or (at your option) any later version.
++*/
++
++#ifndef _FS_FUSE_FSCACHE_H
++#define _FS_FUSE_FSCACHE_H
++
++/* Any function declarations, defines and enumerations that are used in other
++ * fuse .c files should go in here. The actual function bodies (not for
++ * defines) should go in the fscache.c file (except for small inline
++ * functions).
++ */
++
++#ifdef CONFIG_FUSE_FSCACHE
++extern  struct fscache_netfs fuse_cache_netfs;
++
++static inline int fuse_register_fscache()
++{
++	return fscache_register_netfs(&fuse_cache_netfs);
++}
++
++static inline void fuse_unregister_netfs()
++{
++	fscache_unregister_netfs(&fuse_cache_netfs);
++}
++
++#else /* CONFIG_FUSE_FSCACHE */
++
++static inline int fuse_register_fscache()
++{
++	return 0;
++}
++
++static inline void fuse_unregister_netfs() {}
++#endif /* CONFIG_FUSE_FSCACHE */
++
++#endif /* _FS_FUSE_FSCACHE_H */
+-- 
+1.9.3
+

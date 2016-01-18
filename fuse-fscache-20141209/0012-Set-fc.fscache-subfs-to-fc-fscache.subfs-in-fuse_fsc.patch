@@ -1,0 +1,75 @@
+From c7b92c760314549eda1c5abe0c1a9bc7304809e1 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Fri, 28 Nov 2014 21:52:00 +0530
+Subject: [PATCH 12/35] Set 'fc.fscache->subfs' to 'fc->fscache.subfs' in
+ 'fuse_fscache_get_subfs_cookie()', and set 'buffer = (void*) fi->orig_ino' in
+ 'fuse_fh_cache_get_key()'
+
+---
+ fs/fuse/fscache.c | 16 ++++++++--------
+ 1 file changed, 8 insertions(+), 8 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 9c73366..14781db 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -217,8 +217,8 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 
+         uint16_t fhlen;
+         fhlen = sizeof(fi->orig_ino);
+-        
+-        memcpy(buffer, fi->orig_ino, fhlen);
++        buffer = (void*) fi->orig_ino; 
++//      memcpy(buffer, fi->orig_ino, fhlen);
+         return fhlen;
+ 
+ }
+@@ -263,7 +263,7 @@ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+  */
+ static void fuse_fh_cache_now_uncached(void *cookie_netfs_data)
+ {
+-	return 0; /*for now*/
++	
+ }
+ 
+ /***********************************/
+@@ -279,10 +279,10 @@ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
+ /* This function takes the struct fuse_conn (via a pointer)
+  * as its argument and should return the cookie for fuse.glusterfs*/
+ {
+-	fc.fscache->subfs = fscache_acquire_cookie(
++	fc->fscache.subfs = fscache_acquire_cookie(
+ 				fuse_cache_netfs.primary_index,
+ 				&fuse_subfs_cache_index_def, fc, true);
+-	return 0;
++
+ }
+ 
+ /* b) Construct a cookie for the second index level, ie.. the mount point or vol-id*/
+@@ -291,7 +291,7 @@ void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
+ {
+ 	fc->fscache.mnt = fscache_acquire_cookie(fc->fscache.subfs,
+ 				&fuse_mnt_cache_index_def, fc, true);
+-	return 0;
++
+ }
+ 
+ /* c) Construct a cookie for the third index level, ie.. the inode/fsid */
+@@ -314,12 +314,12 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+  ******************************************/
+ 
+ // a) Registering the netfs
+-static int fuse_register_fscache(void)
++int fuse_register_fscache(void)
+ {
+         return fscache_register_netfs(&fuse_cache_netfs);
+ }
+ 
+-static void fuse_unregister_netfs(void)
++void fuse_unregister_netfs(void)
+ {
+         fscache_unregister_netfs(&fuse_cache_netfs);
+ }
+-- 
+1.9.3
+

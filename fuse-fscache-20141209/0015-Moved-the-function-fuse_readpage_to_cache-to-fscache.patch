@@ -1,0 +1,28 @@
+From 297babe9545d912b64cfa2670426f5445b155b94 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sat, 29 Nov 2014 22:16:09 +0530
+Subject: [PATCH 15/35] Moved the function fuse_readpage_to_cache() to
+ fscache.c, and left the declaration in fscach.h
+
+---
+ fs/fuse/fscache.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index 4976fc0..22e52c8 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -25,6 +25,10 @@ extern struct fscache_netfs fuse_cache_netfs;
+ extern int fuse_register_fscache(void);
+ 
+ extern void fuse_unregister_netfs(void);
++
++extern void fuse_readpage_to_fscache(struct inode *inode,
++                                      struct page *page);
++
+ #else /* CONFIG_FUSE_FSCACHE */
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+-- 
+1.9.3
+

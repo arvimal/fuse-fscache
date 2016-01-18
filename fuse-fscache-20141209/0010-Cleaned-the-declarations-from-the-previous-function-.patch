@@ -1,0 +1,50 @@
+From 1b35fdebf9a62e6d2c2408664d904ffb0fd64d76 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Fri, 28 Nov 2014 18:47:42 +0530
+Subject: [PATCH 10/35] Cleaned the declarations from the previous function
+ bodies, removed 'inline' keyword from the declarations
+
+---
+ fs/fuse/fscache.h | 19 ++++---------------
+ 1 file changed, 4 insertions(+), 15 deletions(-)
+
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index d269307..d2ee8a3 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -21,28 +21,17 @@
+ #ifdef CONFIG_FUSE_FSCACHE
+ extern struct fscache_netfs fuse_cache_netfs;
+ 
+-static inline int fuse_register_fscache(void)
+-/*{
+-	return fscache_register_netfs(&fuse_cache_netfs);
+-}*/
++static int fuse_register_fscache(void);
+ 
+-static inline void fuse_unregister_netfs(void)
+-/*{
+-	fscache_unregister_netfs(&fuse_cache_netfs);
+-}*/
++static void fuse_unregister_netfs(void);
+ 
+ #else /* CONFIG_FUSE_FSCACHE */
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+ 
+-static inline int fuse_register_fscache(void)
+-/*{
+-	return 0;
+-}*/
++static int fuse_register_fscache(void);
+ 
+-static inline void fuse_unregister_netfs(void) 
+-/*{
+-}*/
++static void fuse_unregister_netfs(void);
+ #endif /* CONFIG_FUSE_FSCACHE */
+ 
+ #endif /* _FS_FUSE_FSCACHE_H */
+-- 
+1.9.3
+

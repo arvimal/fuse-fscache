@@ -1,0 +1,79 @@
+From 43f068d165990cd90ae7f0ba3277f44c484087b2 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sat, 29 Nov 2014 21:53:57 +0530
+Subject: [PATCH 14/35] Added fuse_readpage_to_fscache() in fscache.c
+
+---
+ fs/fuse/file.c    |  6 ++++++
+ fs/fuse/fscache.c | 26 ++++++++++++++++++++++++--
+ 2 files changed, 30 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index caa8d95..69fc050 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -18,6 +18,9 @@
+ #include <linux/aio.h>
+ #include <linux/falloc.h>
+ 
++/*Include fs/fuse/fscache.h for reading the page to fscache*/
++#include "fscache.h"
++
+ static const struct file_operations fuse_direct_io_file_operations;
+ 
+ static int fuse_send_open(struct fuse_conn *fc, u64 nodeid, struct file *file,
+@@ -784,6 +787,9 @@ static int fuse_readpage(struct file *file, struct page *page)
+ 	err = -EIO;
+ 	if (is_bad_inode(inode))
+ 		goto out;
++	
++	/*Add the page to fscache, here??*/
++        fuse_readpage_to_fscache(inode, page);
+ 
+ 	err = fuse_do_readpage(file, page);
+ 	fuse_invalidate_atime(inode);
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 69359d1..126c6e2 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -312,6 +312,24 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+  	}
+ }
+ 
++/***************************************/
++/* Read the page to the fscache cookie */
++/***************************************/
++
++void __fuse_readpage_to_fscache(struct fuse_inode *fi, struct page *page)
++{
++	int ret;
++
++	ret = fscache_write_page(fi->fscache, page, GFP_KERNEL);
++	//printk(KERN_WARNING "fuse: opt=%s, p=%s, token=%d\n", opt, p, token);
++	printk(KERN_WARNING "fuse: fscache=%p, page=%p, gfp=%u\n", fi->fscache, page, GFP_KERNEL);
++
++	if (ret !=0)
++		fscache_uncache_page(fi->fscache, page);
++}
++
++
++
+ /******************************************/
+ /* Register/Unregister the netfs
+  ******************************************/
+@@ -324,6 +342,10 @@ int fuse_register_fscache(void)
+ 
+ void fuse_unregister_netfs(void)
+ {
+-        fscache_unregister_netfs(&fuse_cache_netfs);
++        return fscache_unregister_netfs(&fuse_cache_netfs);
+ }
+-
++/* void fuse_unregister_netfs(void)
++ * {
++ *          fscache_unregister_netfs(&fuse_cache_netfs);
++ * }
++ */
+-- 
+1.9.3
+

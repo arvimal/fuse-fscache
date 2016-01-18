@@ -1,0 +1,27 @@
+From 9f6d1f8fbc7cc1a3c33a48ae9392f97529ac100d Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 30 Nov 2014 19:50:51 +0530
+Subject: [PATCH 22/35] Small changes in one commit
+
+a) Set CONFIG_FSCACHE_DEBUG=y in .config (fscache debug enabler in kernel)
+b) Edited fs/fuse/fscache.c, to change the printk debug statement to include the function name
+---
+ fs/fuse/fscache.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 2d47b4c..aebb9c5 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -324,7 +324,7 @@ void __fuse_readpage_to_fscache(struct fuse_inode *fi, struct page *page)
+ 
+ 	ret = fscache_write_page(fi->fscache, page, GFP_KERNEL);
+ 	//printk(KERN_WARNING "fuse: opt=%s, p=%s, token=%d\n", opt, p, token);
+-	printk(KERN_WARNING "fuse: fscache=%p, page=%p, gfp=%u\n", fi->fscache, page, GFP_KERNEL);
++        printk(KERN_WARNING "fuse_readpage_to_fscache: fscache=%p, page=%p, gfp=%u\n", fi->fscache, page, GFP_KERNEL);
+ 
+ 	if (ret !=0)
+ 		fscache_uncache_page(fi->fscache, page);
+-- 
+1.9.3
+

@@ -1,0 +1,63 @@
+From 47ff95d55502bbfb2d3e693a41e6eee8c460caa2 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 22:07:53 +0100
+Subject: [PATCH 19/35] cleanup fscache.h
+
+The empty inline functions will be used when CONFIG_FUSE_FSCACHE is not
+defined. The compiler will optimize them and remove them from the final
+binary.
+
+This makes it possible to have functions like fuse_register_fscache() in
+other .c files in the fuse module, without needing to add ugly #ifdef
+pre-processor macros around them.
+---
+ fs/fuse/fscache.h | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index 324c79a..9963e69 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -8,7 +8,6 @@
+  * as published by the Free Software Foundation; either version
+  * 2 of the License, or (at your option) any later version.
+ */
+-#include <linux/fscache.h>
+ 
+ #ifndef _FS_FUSE_FSCACHE_H
+ #define _FS_FUSE_FSCACHE_H
+@@ -20,7 +19,7 @@
+  */
+ 
+ #ifdef CONFIG_FUSE_FSCACHE
+-extern struct fscache_netfs fuse_cache_netfs;
++#include <linux/fscache.h>
+ 
+ extern int fuse_register_fscache(void);
+ 
+@@ -33,9 +32,20 @@ extern void fuse_readpage_to_fscache(struct inode *inode,
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+ 
+-extern int fuse_register_fscache(void);
++static inline int fuse_register_fscache(void)
++{
++	return 0;
++}
+ 
+-extern void fuse_unregister_fscache(void);
++static inline void fuse_unregister_fscache(void)
++{
++	return;
++}
++
++static inline fuse_readpage_to_fscache(struct inode *inode, struct page *page)
++{
++	return 0;
++}
+ #endif /* CONFIG_FUSE_FSCACHE */
+ 
+ #endif /* _FS_FUSE_FSCACHE_H */
+-- 
+1.9.3
+

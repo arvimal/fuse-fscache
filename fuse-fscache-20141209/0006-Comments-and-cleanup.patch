@@ -1,0 +1,88 @@
+From 8a112fe77c099a48b553eb9a4ac469c28993a826 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Mon, 24 Nov 2014 13:16:53 +0530
+Subject: [PATCH 06/35] Comments and cleanup
+
+---
+ fs/fuse/fscache.c | 29 ++++++++++++++++-------------
+ 1 file changed, 16 insertions(+), 13 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index e850850..86326b5 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -166,7 +166,9 @@ static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
+  *  Brick1: 10.65.209.229:/bricks/vol1
+  *  Brick2: 10.65.210.12:/bricks/vol1
+  */
+-
++/* How do we need to do it? Pass the volume-ID here, or pass
++ * it at the time of mount?
++ */
+         char* uuid = "c753e3fe-ffa1-4d44-8aef-71ae9da41925";
+         int uuidlen = strlen(uuid);
+         memcpy(buffer, uuid, uuidlen);
+@@ -204,6 +206,12 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 	/* TODO: fill buffer with fi->orig_ino, GFID in future?
+ 	 *       Error out if not set
+ 	 */
++
++/* Do we need 'uint16_t bufmax' as an arg here? since we are not using it.
++ * I set 'fhlen' as 'int64_t' since 'fi->orig_ino' is 64bits. 
++ * But I think that's not needed here, since fhlen just stores the length
++ * of the string rather than the size? If so, what type should I use?
++ */
+ 	const struct fuse_inode *fi = cookie_netfs_data;
+ 
+         int64_t fhlen;
+@@ -219,13 +227,12 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ static void fuse_fh_cache_get_attr(const void *cookie_netfs_data,
+ 				   uint64_t *size)
+ {
+-        /* What sort of attributes are we looking for here?
+-         * From the args, it seems to be the size. 	
+-         * We have a struct 'iattr' which has inode size and
+-         * other attrtibutes, in /include/linux/fs.h
+-         */
+-        /* Check if the size of '*size' and 'inode_attr->ia_size' are same.
+-         */
++/* What sort of attributes are we looking for here?
++* From the args, it seems to be the size. We have a struct 'iattr' 
++* which has inode size and other attrtibutes, in /include/linux/fs.h
++*
++* TODO: Check if the size of '*size' and 'inode_attr->ia_size' are same.
++*/
+         const struct iattr *inode_attr = cookie_netfs_data;
+         *size = inode_attr->ia_size;
+ }
+@@ -264,9 +271,8 @@ static void fuse_fh_cache_now_uncached(void *cookie_netfs_data)
+ 
+ /* a) Construct a cookies for the initial index, ie.. glusterfs FS level */
+ /* NOTE: This will need the extension of the struct 'fuse_conn' from 'fuse_i.h'
++ */ 
+ 
+-/* We'd need to create a new member in the fuse_conn struct, to return the cookie*/
+-/* The new member is fscache.subfs */
+ 
+ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
+ /* This function takes the struct fuse_conn (via a pointer)
+@@ -279,8 +285,6 @@ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
+ }
+ 
+ /* b) Construct a cookie for the second index level, ie.. the mount point or vol-id*/
+-/* NOTE: This will need the extension of 'fuse_conn', as done in the initial index  */
+-/* The new member is fscache.net */
+ 
+ void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
+ {
+@@ -295,7 +299,6 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+ 	struct fuse_inode *fi = get_fuse_inode(inode);
+ 	struct fuse_conn *fc = get_fuse_conn_super(inode->i_sb);
+ 
+-	/* First extension to fuse_inode for fscache*/
+ 	if (fi->fscache)
+ 		return;
+ 	
+-- 
+1.9.3
+

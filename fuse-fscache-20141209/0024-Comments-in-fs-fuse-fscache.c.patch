@@ -1,0 +1,49 @@
+From a8f3747847881184fe7e5f8006797c2e4d2eafa7 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 30 Nov 2014 20:04:25 +0530
+Subject: [PATCH 24/35] Comments in fs/fuse/fscache.c :
+
+a) Comments for the register/unregister functions in fscache.c
+b) Starting the fuse_fscache_set_inode_cookie() function
+---
+ fs/fuse/fscache.c | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index aebb9c5..a5c6ae7 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -337,16 +337,26 @@ void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+ }
+ 
+ 
+-/******************************************/
+-/* Register/Unregister the netfs
+- ******************************************/
++/*****************************************************/
++/* Set the inode cookie when a file is opened in fuse*/
++/*****************************************************/
+ 
+-// a) Registering the netfs
++
++
++/*********************************/
++/* Register/Unregister the netfs */
++/*********************************/
++/* These functions are called in the function fuse_init(),
++ * in fs/fuse/inode.c, via fs/fuse/fscache.h
++ */
++
++/* a) Registering the netfs */
+ int fuse_register_fscache(void)
+ {
+         return fscache_register_netfs(&fuse_cache_netfs);
+ }
+ 
++/* Unregistering the netfs */
+ void fuse_unregister_fscache(void)
+ {
+         fscache_unregister_netfs(&fuse_cache_netfs);
+-- 
+1.9.3
+

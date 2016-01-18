@@ -1,0 +1,58 @@
+From a72e4de4f5e4f9dae0b659193a7375080bedbcaf Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 21:44:38 +0100
+Subject: [PATCH 17/35] use memcpy() for filling the buffer with the inode in
+ fuse_fh_cache_get_key()
+
+---
+ fs/fuse/fscache.c | 28 +++++++++-------------------
+ 1 file changed, 9 insertions(+), 19 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 126c6e2..14bd8cd 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -199,31 +199,21 @@ static enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ /* Functions for the 4th index level (GFID)    */
+ /***********************************************/
+ 
+-/* a) Set the key for the third level index entry (File handle) */
+-
++/* a) Set the key for the third level index entry (File handle)
++ *
++ * TODO: Fill buffer with fi->orig_ino, GFID in future?
++ */
+ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+-	/* TODO: fill buffer with fi->orig_ino, GFID in future?
+-	 *       Error out if not set
+-	 */
+-
+-/* Do we need 'uint16_t bufmax' as an arg here? since we are not using it.
+- * I set 'fhlen' as 'int64_t' since 'fi->orig_ino' is 64bits. 
+- * But I think that's not needed here, since fhlen just stores the length
+- * of the string rather than the size? If so, what type should I use?
+- */
+ 	const struct fuse_inode *fi = cookie_netfs_data;
++	uint16_t fhlen = sizeof(fi->orig_ino);
+ 
+-        uint16_t fhlen;
+-        fhlen = sizeof(fi->orig_ino);
+-	/* we are not using 'memcpy' to fill buffer, since 'fi->orig_ino'
+- 	* is an int (a 64-bit inode number), and not a struct
+- 	*/ 	
+-        buffer = (void*) fi->orig_ino; 
+-//      memcpy(buffer, fi->orig_ino, fhlen);
+-        return fhlen;
++	if (fhlen > bufmax || !fi->orig_ino)
++		return 0;
+ 
++	memcpy(buffer, &(fi->orig_ino), fhlen);
++	return fhlen;
+ }
+ 
+ /* b) Provide updated file attributes */
+-- 
+1.9.3
+

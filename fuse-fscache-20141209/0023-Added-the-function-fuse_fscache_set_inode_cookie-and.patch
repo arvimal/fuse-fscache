@@ -1,0 +1,37 @@
+From e964541c96a11e80e91fe2bb8f0b9f0913b8028b Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 30 Nov 2014 19:56:33 +0530
+Subject: [PATCH 23/35] Added the function fuse_fscache_set_inode_cookie(), and
+ comments in fs/fuse/file.c
+
+---
+ fs/fuse/file.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index f8df76b..eb82f71 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -18,7 +18,8 @@
+ #include <linux/aio.h>
+ #include <linux/falloc.h>
+ 
+-/*Include fs/fuse/fscache.h for reading the page to fscache*/
++/*Including for functions defined in fscache.h,
++ * which ultimately are in fscache.c*/
+ #include "fscache.h"
+ 
+ static const struct file_operations fuse_direct_io_file_operations;
+@@ -231,6 +232,9 @@ void fuse_finish_open(struct inode *inode, struct file *file)
+ 	}
+ 	if ((file->f_mode & FMODE_WRITE) && fc->writeback_cache)
+ 		fuse_link_write_file(file);
++
++	/* Set the inode cookie in the 4th level fuse-fscache index*/
++	fuse_fscache_set_inode_cookie(inode, file);
+ }
+ 
+ int fuse_open_common(struct inode *inode, struct file *file, bool isdir)
+-- 
+1.9.3
+

@@ -1,0 +1,24 @@
+From 30b317f9cab509a13f88409096c7f3eaddd68b4e Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 21:20:59 +0100
+Subject: [PATCH 31/35] initialize the fuse_inode->fscache pointer to NULL
+
+---
+ fs/fuse/inode.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/fs/fuse/inode.c b/fs/fuse/inode.c
+index bc04be9..7549f16 100644
+--- a/fs/fuse/inode.c
++++ b/fs/fuse/inode.c
+@@ -291,6 +291,7 @@ static int fuse_inode_set(struct inode *inode, void *_nodeidp)
+ {
+ 	u64 nodeid = *(u64 *) _nodeidp;
+ 	get_fuse_inode(inode)->nodeid = nodeid;
++	get_fuse_inode(inode)->fscache = NULL;
+ 	return 0;
+ }
+ 
+-- 
+1.9.3
+

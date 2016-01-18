@@ -1,0 +1,145 @@
+From feed39946dd05669e61b3d2e0165ac46d17659e1 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 23:41:05 +0100
+Subject: [PATCH 32/35] Add/rework fuse_read_to_fscache()
+
+---
+ fs/fuse/file.c    |  5 +++++
+ fs/fuse/fscache.c | 38 +++++++++++++++++++++++++++++++-------
+ fs/fuse/fscache.h | 31 +++++++++++++++++++++++++++----
+ 3 files changed, 63 insertions(+), 11 deletions(-)
+
+diff --git a/fs/fuse/file.c b/fs/fuse/file.c
+index c49265f..d4baa4f 100644
+--- a/fs/fuse/file.c
++++ b/fs/fuse/file.c
+@@ -754,6 +754,11 @@ static int fuse_do_readpage(struct file *file, struct page *page)
+ 	 */
+ 	fuse_wait_on_page_writeback(inode, page->index);
+ 
++	/* Is the page cached? */
++	err = fuse_readpage_from_fscache(file->f_inode, page);
++	if (err == 0)
++		return err;
++
+ 	req = fuse_get_req(fc, 1);
+ 	if (IS_ERR(req))
+ 		return PTR_ERR(req);
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 068f787..513f4c2 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -329,8 +329,9 @@ static void fuse_fscache_disable_inode_cookie(struct inode *inode)
+ /* Read the page to the fscache cookie */
+ /***************************************/
+ 
+-void __fuse_readpage_to_fscache(struct fuse_inode *fi, struct page *page)
++void __fuse_readpage_to_fscache(struct inode *inode, struct page *page)
+ {
++	struct fuse_inode *fi = get_fuse_inode(inode);
+ 	int ret;
+ 
+ 	ret = fscache_write_page(fi->fscache, page, GFP_KERNEL);
+@@ -341,12 +342,6 @@ void __fuse_readpage_to_fscache(struct fuse_inode *fi, struct page *page)
+ 		fscache_uncache_page(fi->fscache, page);
+ }
+ 
+-void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+-{
+-	if (PageFsCache(page))
+-		__fuse_readpage_to_fscache(inode, page);
+-}
+-
+ static void fuse_readpage_from_fscache_complete(struct page *page, void *ctx,
+ 						int error)
+ {
+@@ -357,6 +352,35 @@ static void fuse_readpage_from_fscache_complete(struct page *page, void *ctx,
+ }
+ 
+ /*
++ * Retrieve a page from FS-Cache
++ */
++int __fuse_readpage_from_fscache(struct inode *inode, struct page *page)
++{
++	int ret;
++	struct fuse_inode *fi = get_fuse_inode(inode);
++
++	printk(KERN_WARNING "%s: (fsc:%p, p:%p, i:0x%p\n",
++		 __func__, fi->fscache, page, inode);
++	ret = fscache_read_or_alloc_page(fi->fscache, page,
++					 fuse_readpage_from_fscache_complete,
++					 NULL,
++					 GFP_KERNEL);
++	switch (ret) {
++
++	case 0: /* page found in fscache, read submitted */
++		printk(KERN_WARNING "%s: submitted\n", __func__);
++		return ret;
++	case -ENOBUFS:	/* page won't be cached */
++	case -ENODATA:	/* page not in cache */
++		printk(KERN_WARNING "%s: %d\n", __func__, ret);
++		return 1;
++
++	default:
++		printk(KERN_WARNING "%s: unknown error ret = %d\n", __func__, ret);
++	}
++	return ret;
++}
++/*
+  * Retrieve a set of pages from FS-Cache
+  */
+ int __fuse_readpages_from_fscache(struct inode *inode,
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index fdcb0e7..8518d24 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -25,19 +25,42 @@ extern int fuse_register_fscache(void);
+ 
+ extern void fuse_unregister_fscache(void);
+ 
+-extern void fuse_readpage_to_fscache(struct inode *inode,
+-                                      struct page *page);
++extern void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc);
++extern void fuse_fscache_release_subfs_cookie(struct fuse_conn *fc);
++
++extern void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc);
++extern void fuse_fscache_release_mnt_cookie(struct fuse_conn *fc);
+ 
+ extern void fuse_fscache_set_inode_cookie(struct inode *inode,
+ 						struct file *file);
+ 
++extern void __fuse_readpage_to_fscache(struct inode *inode,
++				       struct page *page);
++
++extern void fuse_fscache_reset_inode_cookie(struct inode *inode);
++
++static inline void fuse_readpage_to_fscache(struct inode *inode, struct page *page)
++{
++	if (PageFsCache(page))
++		__fuse_readpage_to_fscache(inode, page);
++}
++
++extern int __fuse_readpage_from_fscache(struct inode *, struct page *);
++
++static inline int fuse_readpage_from_fscache(struct inode *inode, struct page *page)
++{
++	struct fuse_inode *fi = get_fuse_inode(inode);
++
++	if (fi->fscache)
++		return __fuse_readpage_from_fscache(inode, page);
++	return -ENOBUFS;
++}
++
+ extern int __fuse_readpages_from_fscache(struct inode *inode, struct
+ 					 address_space *mapping,
+ 					 struct list_head *pages,
+ 					 unsigned *nr_pages);
+ 
+-extern void fuse_fscache_reset_inode_cookie(struct inode *inode);
+-
+ static inline int fuse_readpages_from_fscache(struct inode *inode,
+ 					      struct address_space *mapping,
+ 					      struct list_head *pages,
+-- 
+1.9.3
+

@@ -1,0 +1,44 @@
+From 51126568d0e020c271ea79db5a9edeef0578fb96 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 30 Nov 2014 21:06:21 +0530
+Subject: [PATCH 25/35] Added the fuse_fscache_set_inode_cookie() function
+
+---
+ fs/fuse/fscache.c | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index a5c6ae7..0d20aef 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -314,6 +314,11 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+  	}
+ }
+ 
++/* d) Disable the cookie for the third index level, ie.. the inode/fsid */
++static void fuse_fscache_disable_inode_cookie(struct inode *inode) 
++{
++
++}
+ /***************************************/
+ /* Read the page to the fscache cookie */
+ /***************************************/
+@@ -341,7 +346,14 @@ void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+ /* Set the inode cookie when a file is opened in fuse*/
+ /*****************************************************/
+ 
+-
++void fuse_fscache_set_inode_cookie(struct fuse_inode *fi, struct file *file)
++{
++/* 'struct file' comes from 'fs/fuse/fscache.h' <- 'include/linux/fscache.h' <- 'include/linux/fs.h' */
++	if ((filp->f_flags & O_ACCMODE) != O_RDONLY)
++		fuse_fscache_disable_inode_cookie(inode);
++        else
++                fuse_fscache_enable_inode_cookie(inode);
++}
+ 
+ /*********************************/
+ /* Register/Unregister the netfs */
+-- 
+1.9.3
+

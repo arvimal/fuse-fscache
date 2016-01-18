@@ -1,0 +1,28 @@
+From e1f903b6ac41e8bcdda5aa78d5b4463f78db8c53 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 22:17:41 +0100
+Subject: [PATCH 20/35] Add fuse_readpage_to_fscache()
+
+---
+ fs/fuse/fscache.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 36b519b..750b714 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -318,6 +318,11 @@ void __fuse_readpage_to_fscache(struct fuse_inode *fi, struct page *page)
+ 		fscache_uncache_page(fi->fscache, page);
+ }
+ 
++void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
++{
++	if (PageFsCache(page))
++		__fuse_readpage_to_fscache(inode, page);
++}
+ 
+ 
+ /******************************************/
+-- 
+1.9.3
+

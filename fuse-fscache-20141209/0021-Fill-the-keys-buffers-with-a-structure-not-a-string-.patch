@@ -1,0 +1,107 @@
+From 0a7c73926cb36d57f15c4c5163283a5b765d91f0 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Sat, 29 Nov 2014 23:26:02 +0100
+Subject: [PATCH 21/35] Fill the keys/buffers with a structure, not a
+ string/integer
+
+This will make things easier when it gets extended for more advanced
+contents later. And it is a little more correct, hopefully less
+confusing.
+---
+ fs/fuse/fscache.c | 48 ++++++++++++++++++++++++++++++------------------
+ 1 file changed, 30 insertions(+), 18 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 750b714..2d47b4c 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -85,15 +85,15 @@ struct fscache_cookie_def fuse_fh_cache_index_def = {
+ /* *************************************** */
+ 
+ struct fuse_fscache_subfs_key {
+-	char *subtype;	/* from super_block->s_subtype, like "glusterfs" */
++	char subtype[32];	/* from super_block->s_subtype, like "glusterfs" */
+ };
+ 
+ struct fuse_fscache_mnt_key {
+-	char *fsid;	/* filesystem ID, like volume-id in Gluster */
++	char fsid[64];		/* filesystem ID, like volume-id in Gluster */
+ };
+ 
+ struct fuse_fscache_fh_key {
+-        char *fh;       /* GFID for glusterfs, or the inode */
++	u64 ino;		/* TODO: GFID for glusterfs, or the inode */
+ };
+ 
+ /****************************************/
+@@ -108,16 +108,20 @@ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ /* This will create the 2nd level index, will fill 'buffer' 
+  * with the string 'fuse.glusterfs', and return its length
+  */
+-        const struct fuse_conn *fc = cookie_netfs_data;
++	const struct fuse_conn *fc = cookie_netfs_data;
++	struct fuse_fscache_subfs_key *key = buffer;
++
++	/* "klen" will contain the length of the key */
++	uint16_t klen;
++	klen = sizeof(struct fuse_fscache_subfs_key);
+ 
+-        /* "klen" will contain the length of the key */
+-        uint16_t klen;
+-        klen = strlen(fc->sb->s_subtype); 
++	if (klen > bufmax)
++		return 0;
+ 
+-        /* Copy the contents of 'fc->sb->s_subtype' to 'buffer'
+-         * 'buffer' should contain 'fuse.glusterfs'.
+-         */
+-        memcpy(buffer, fc->sb->s_subtype, klen);
++	/* Copy the contents of 'fc->sb->s_subtype' to 'buffer'
++	 * 'buffer' should contain 'fuse.glusterfs'.
++	 */
++	strncpy(key->subtype, fc->sb->s_subtype, sizeof(key->subtype));
+ 
+         return klen;
+ }
+@@ -170,10 +174,16 @@ static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
+  * it at the time of mount?
+  */
+         //char* uuid = "c753e3fe-ffa1-4d44-8aef-71ae9da41925";
+-        char* uuid = "e545e1ea-e932-45ad-a003-2e91bacea403";
+-        int uuidlen = strlen(uuid);
+-        memcpy(buffer, uuid, uuidlen);
+-        return uuidlen; 
++	const char* uuid = "e545e1ea-e932-45ad-a003-2e91bacea403";
++	struct fuse_fscache_mnt_key *key = buffer;
++	uint16_t klen = sizeof(struct fuse_fscache_mnt_key);
++
++	if (klen > bufmax)
++		return 0;
++
++	strncpy(key->fsid, uuid, strlen(uuid));
++
++	return klen;
+ }
+ 
+ /* b) Provide new auxiliary cache data  */
+@@ -207,12 +217,14 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+ 	const struct fuse_inode *fi = cookie_netfs_data;
+-	uint16_t fhlen = sizeof(fi->orig_ino);
++	struct fuse_fscache_fh_key *key = buffer;
++	uint16_t fhlen = sizeof(struct fuse_fscache_fh_key);
+ 
+-	if (fhlen > bufmax || !fi->orig_ino)
++	if (fhlen > bufmax)
+ 		return 0;
+ 
+-	memcpy(buffer, &(fi->orig_ino), fhlen);
++	key->ino = fi->orig_ino;
++
+ 	return fhlen;
+ }
+ 
+-- 
+1.9.3
+

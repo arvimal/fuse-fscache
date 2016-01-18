@@ -1,0 +1,61 @@
+From 38520efaadbb67004b36c0ab1079f52b6f9fa2f7 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Fri, 28 Nov 2014 20:01:49 +0530
+Subject: [PATCH 11/35] Changed 'fc->fscache.subfs' to 'fc.fscache->subfs' in
+ fscache.c
+
+---
+ fs/fuse/fscache.c |  2 +-
+ fs/fuse/fscache.h | 10 +++++-----
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 3a51c70..9c73366 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -279,7 +279,7 @@ void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
+ /* This function takes the struct fuse_conn (via a pointer)
+  * as its argument and should return the cookie for fuse.glusterfs*/
+ {
+-	fc->fscache.subfs = fscache_acquire_cookie(
++	fc.fscache->subfs = fscache_acquire_cookie(
+ 				fuse_cache_netfs.primary_index,
+ 				&fuse_subfs_cache_index_def, fc, true);
+ 	return 0;
+diff --git a/fs/fuse/fscache.h b/fs/fuse/fscache.h
+index d2ee8a3..4976fc0 100644
+--- a/fs/fuse/fscache.h
++++ b/fs/fuse/fscache.h
+@@ -9,6 +9,7 @@
+  * 2 of the License, or (at your option) any later version.
+ */
+ #include <linux/fscache.h>
++
+ #ifndef _FS_FUSE_FSCACHE_H
+ #define _FS_FUSE_FSCACHE_H
+ 
+@@ -21,17 +22,16 @@
+ #ifdef CONFIG_FUSE_FSCACHE
+ extern struct fscache_netfs fuse_cache_netfs;
+ 
+-static int fuse_register_fscache(void);
+-
+-static void fuse_unregister_netfs(void);
++extern int fuse_register_fscache(void);
+ 
++extern void fuse_unregister_netfs(void);
+ #else /* CONFIG_FUSE_FSCACHE */
+ 
+ #warning CONFIG_FUSE_FSCACHE is not defined!
+ 
+-static int fuse_register_fscache(void);
++extern int fuse_register_fscache(void);
+ 
+-static void fuse_unregister_netfs(void);
++extern void fuse_unregister_netfs(void);
+ #endif /* CONFIG_FUSE_FSCACHE */
+ 
+ #endif /* _FS_FUSE_FSCACHE_H */
+-- 
+1.9.3
+

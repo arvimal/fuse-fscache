@@ -1,0 +1,184 @@
+From b0fde05cb6ad54a7e2508f3902f0ca3d53b48df9 Mon Sep 17 00:00:00 2001
+From: "Vimal A.R" <arvimal@yahoo.in>
+Date: Sun, 2 Nov 2014 00:09:15 +0530
+Subject: [PATCH 04/35] Ordering of the functions, in each index level
+
+---
+ fs/fuse/fscache.c | 86 +++++++++++++++++++++++++++++++++----------------------
+ 1 file changed, 51 insertions(+), 35 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index aef178d..ea4fe99 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -76,6 +76,8 @@ struct fscache_cookie_def fuse_fh_cache_index_def = {
+ 	.now_uncached		= fuse_fh_cache_now_uncached,
+ };
+ 
++/* *************************************** */
++
+ struct fuse_fscache_subfs_key {
+ 	char *subtype;	/* from super_block->s_subtype, like "glusterfs" */
+ };
+@@ -84,9 +86,12 @@ struct fuse_fscache_mnt_key {
+ 	char *fsid;	/* filesystem ID, like volume-id in Gluster */
+ };
+ 
+-/*
+- * set the key for the index entry
+- */
++/****************************************/
++/* Functions for the first index level  */
++/**((************************************/
++
++/* a) Set the key for the index entry */
++
+ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+@@ -96,18 +101,16 @@ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ 	return 0;
+ }
+ 
+-/*
+- * provide new auxiliary cache data
+- */
++/* b) Provide new auxiliary cache data */
++
+ static uint16_t fuse_fs_cache_get_aux(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+ 	return 0;
+ }
+ 
+-/*
+- * check that the auxiliary data indicates that the entry is still valid
+- */
++/* c) Check that the auxiliary data indicates that the entry is still valid  */
++
+ static enum fscache_checkaux fuse_fs_cache_check_aux(void *cookie_netfs_data,
+ 						     const void *buffer,
+ 						     uint16_t buflen)
+@@ -115,19 +118,20 @@ static enum fscache_checkaux fuse_fs_cache_check_aux(void *cookie_netfs_data,
+ 	return FSCACHE_CHECKAUX_OKAY;
+ }
+ 
+-/*****************************************************************************/
+-/*
+- * set the key for the index entry
+- */
++/****************************************************/
++/* Functions for the second index level (Volume ID) */ 
++/****************************************************/
++
++/* a) Set the key for the second level index entry (with GFID) */
++
+ static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
+ 				       void *buffer, uint16_t bufmax)
+ {
+ 	return 0;
+ }
+ 
+-/*
+- * provide new auxiliary cache data
+- */
++/* b) Provide new auxiliary cache data  */
++
+ static uint16_t fuse_mnt_cache_get_aux(const void *cookie_netfs_data,
+ 				       void *buffer, uint16_t bufmax)
+ {
+@@ -137,21 +141,20 @@ static uint16_t fuse_mnt_cache_get_aux(const void *cookie_netfs_data,
+ 	return 0;
+ }
+ 
+-/*
+- * check that the auxiliary data indicates that the entry is still valid
+- */
+-static
+-enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
++/* c) Check that the auxiliary data indicates that the entry is still valid */
++static enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ 					       const void *buffer,
+ 					       uint16_t buflen)
+ {
+ 	return FSCACHE_CHECKAUX_OKAY;
+ }
+ 
+-/*****************************************************************************/
+-/*
+- * set the key for the index entry
+- */
++/***********************************************/
++/* Functions for the third index level (GFID   */
++/***********************************************/
++
++/* a) Set the key for the third level index entry (File handle) */
++
+ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+@@ -163,26 +166,23 @@ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 	return 0;
+ }
+ 
+-/*
+- * provide updated file attributes
+- */
++/* b) Provide updated file attributes */
++
+ static void fuse_fh_cache_get_attr(const void *cookie_netfs_data,
+ 				   uint64_t *size)
+ {
+ }
+ 
+-/*
+- * provide new auxiliary cache data
+- */
++/* c) Provide new auxiliary cache data */
++
+ static uint16_t fuse_fh_cache_get_aux(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
+ 	return 0;
+ }
+ 
+-/*
+- * check that the auxiliary data indicates that the entry is still valid
+- */
++/* d) Check that the auxiliary data indicates that the entry is still valid */
++
+ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+ 						     const void *buffer,
+ 						     uint16_t buflen)
+@@ -190,7 +190,7 @@ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+ 	return FSCACHE_CHECKAUX_OKAY;
+ }
+ 
+-/*
++/* e) 
+  * indication the cookie is no longer uncached
+  * - this function is called when the backing store currently caching a cookie
+  *   is removed
+@@ -227,3 +227,19 @@ static void fuse_fscache_enable_inode_cookie(struct inode *inode)
+ 				&fuse_fh_cache_index_def, fi, true);
+ 	}
+ }
++
++/* ########################## */
++
++/* Registering the netfs */
++ret = fscache_register_netfs(&fuse_cache_netfs);
++
++
++/* Netfs un-registration: */
++
++
++/* Index registration for fuse_fscache */
++
++struct fscache_cookie *fscache_acquire_cookie(struct fscache_cookie *parent,
++					const struct fscache_object_def *def,
++					void *netfs_data,
++					bool enable);
+-- 
+1.9.3
+

@@ -1,0 +1,54 @@
+From 704e865f9d1c736ca7cecd33c009ece55db4cd74 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Tue, 9 Dec 2014 21:06:12 +0100
+Subject: [PATCH 30/35] move DEBUG messages to WARNING for testing
+
+---
+ fs/fuse/fscache.c | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 0f2bc0d..068f787 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -350,7 +350,7 @@ void fuse_readpage_to_fscache(struct fuse_inode *inode, struct page *page)
+ static void fuse_readpage_from_fscache_complete(struct page *page, void *ctx,
+ 						int error)
+ {
+-	printk(KERN_DEBUG "%s: (0x%p/%d)\n", __func__, page, error);
++	printk(KERN_WARNING "%s: (0x%p/%d)\n", __func__, page, error);
+ 	if (!error)
+ 		SetPageUptodate(page);
+ 	unlock_page(page);
+@@ -367,7 +367,7 @@ int __fuse_readpages_from_fscache(struct inode *inode,
+ 	int ret;
+ 	struct fuse_inode *fi = get_fuse_inode(inode);
+ 
+-	printk(KERN_DEBUG "%s: (0x%p/%u/0x%p)\n", __func__,
++	printk(KERN_WARNING "%s: (0x%p/%u/0x%p)\n", __func__,
+ 	       fi->fscache, *nr_pages, inode);
+ 
+ 	ret = fscache_read_or_alloc_pages(fi->fscache, mapping,
+@@ -377,16 +377,16 @@ int __fuse_readpages_from_fscache(struct inode *inode,
+ 					  mapping_gfp_mask(mapping));
+ 	switch (ret) {
+ 	case 0:	/* read submitted to the cache for all pages */
+-		printk(KERN_DEBUG "%s: submitted\n", __func__);
++		printk(KERN_WARNING "%s: submitted\n", __func__);
+ 		return ret;
+ 
+ 	case -ENOBUFS:	/* some pages are not cached and can't be */
+ 	case -ENODATA:	/* some pages are not cached */
+-		printk(KERN_DEBUG "%s: no page\n", __func__);
++		printk(KERN_WARNING "%s: no page\n", __func__);
+ 		return 1;
+ 
+ 	default:
+-		printk(KERN_DEBUG "unknown error ret = %d\n", ret);
++		printk(KERN_WARNING "unknown error ret = %d\n", ret);
+ 	}
+ 
+ 	return ret;
+-- 
+1.9.3
+

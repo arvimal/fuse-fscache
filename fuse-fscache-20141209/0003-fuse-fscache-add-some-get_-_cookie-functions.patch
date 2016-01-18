@@ -1,0 +1,148 @@
+From 3106058d683fd42b5417e16d25c9e620d793caa9 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Fri, 17 Oct 2014 21:50:25 +0200
+Subject: [PATCH 03/35] fuse/fscache: add some get_*_cookie() functions
+
+A little start of the definition of the cookies that we'll be using. The
+contents of these new *_key structs does not need to be final yet.
+
+The "struct fuse_fscache_mnt_key" can not get detected during runtime
+yet. For now, it can get filled with a hard-coded (or even a random)
+value like a UUID. The contents of this struct should somehow get passed
+from userpace (maybe during INIT?).
+---
+ fs/fuse/fscache.c | 50 ++++++++++++++++++++++++++++++++++++++++++++++++--
+ fs/fuse/fuse_i.h  | 13 +++++++++++++
+ 2 files changed, 61 insertions(+), 2 deletions(-)
+
+diff --git a/fs/fuse/fscache.c b/fs/fuse/fscache.c
+index 6b0b264..aef178d 100644
+--- a/fs/fuse/fscache.c
++++ b/fs/fuse/fscache.c
+@@ -1,5 +1,5 @@
+ /*
+- * FS-Cache for FUSE - based on fs/afs/cache.c
++ * FS-Cache for FUSE - based on fs/afs/cache.c and fs/cifs/fscache.c
+  * Copyright (C) 2014 Vimal Kumar <arvimal@yahoo.in> and
+  *                    Niels de Vos <ndevos@redhat.com>
+  *
+@@ -56,7 +56,7 @@ struct fscache_cookie_def fuse_subfs_cache_index_def = {
+ 
+ /* 2nd level index for the source of the mountpoint. For GlusterFS this is the
+  * volumeid (a UUID). */
+-struct fscache_cookie_def fuse_mount_cache_index_def = {
++struct fscache_cookie_def fuse_mnt_cache_index_def = {
+ 	.name			= "fuse.mnt",
+ 	.type			= FSCACHE_COOKIE_TYPE_INDEX,
+ 	.get_key		= fuse_mnt_cache_get_key,
+@@ -76,12 +76,23 @@ struct fscache_cookie_def fuse_fh_cache_index_def = {
+ 	.now_uncached		= fuse_fh_cache_now_uncached,
+ };
+ 
++struct fuse_fscache_subfs_key {
++	char *subtype;	/* from super_block->s_subtype, like "glusterfs" */
++};
++
++struct fuse_fscache_mnt_key {
++	char *fsid;	/* filesystem ID, like volume-id in Gluster */
++};
++
+ /*
+  * set the key for the index entry
+  */
+ static uint16_t fuse_fs_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
++	const struct fuse_conn *fc = cookie_netfs_data;
++
++	/* TODO: fill buffer with a struct fuse_fscache_subfs_key */
+ 	return 0;
+ }
+ 
+@@ -120,6 +131,9 @@ static uint16_t fuse_mnt_cache_get_key(const void *cookie_netfs_data,
+ static uint16_t fuse_mnt_cache_get_aux(const void *cookie_netfs_data,
+ 				       void *buffer, uint16_t bufmax)
+ {
++	const struct fuse_conn *fc = cookie_netfs_data;
++
++	/* TODO: fill buffer with a struct fuse_fscache_mnt_key */
+ 	return 0;
+ }
+ 
+@@ -141,6 +155,11 @@ enum fscache_checkaux fuse_mnt_cache_check_aux(void *cookie_netfs_data,
+ static uint16_t fuse_fh_cache_get_key(const void *cookie_netfs_data,
+ 				      void *buffer, uint16_t bufmax)
+ {
++	const struct fuse_inode *fi = cookie_netfs_data;
++
++	/* TODO: fill buffer with fi->orig_ino, GFID in future?
++	 *       Error out if not set
++	 */
+ 	return 0;
+ }
+ 
+@@ -181,3 +200,30 @@ static enum fscache_checkaux fuse_fh_cache_check_aux(void *cookie_netfs_data,
+ static void fuse_fh_cache_now_uncached(void *cookie_netfs_data)
+ {
+ }
++
++void fuse_fscache_get_subfs_cookie(struct fuse_conn *fc)
++{
++	fc->fscache.subfs = fscache_acquire_cookie(
++				fuse_cache_netfs.primary_index,
++				&fuse_subfs_cache_index_def, fc, true);
++}
++
++void fuse_fscache_get_mnt_cookie(struct fuse_conn *fc)
++{
++	fc->fscache.mnt = fscache_acquire_cookie(fc->fscache.subfs,
++				&fuse_mnt_cache_index_def, fc, true);
++}
++
++static void fuse_fscache_enable_inode_cookie(struct inode *inode)
++{
++	struct fuse_inode *fi = get_fuse_inode(inode);
++	struct fuse_conn *fc = get_fuse_conn_super(inode->i_sb);
++
++	if (fi->fscache)
++		return;
++
++	if (fc->flags & FUSE_MOUNT_FSCACHE) {
++		fi->fscache = fscache_acquire_cookie(fc->fscache.mnt,
++				&fuse_fh_cache_index_def, fi, true);
++	}
++}
+diff --git a/fs/fuse/fuse_i.h b/fs/fuse/fuse_i.h
+index 30cdf5a..3deea0a 100644
+--- a/fs/fuse/fuse_i.h
++++ b/fs/fuse/fuse_i.h
+@@ -113,6 +113,10 @@ struct fuse_inode {
+ 
+ 	/** Miscellaneous bits describing inode state */
+ 	unsigned long state;
++
++#ifdef CONFIG_FUSE_FSCACHE
++	struct fscache_cookie *fscache;
++#endif
+ };
+ 
+ /** FUSE inode state bits */
+@@ -602,6 +606,15 @@ struct fuse_conn {
+ 
+ 	/** Read/write semaphore to hold when accessing sb. */
+ 	struct rw_semaphore killsb;
++
++#ifdef CONFIG_FUSE_FSCACHE
++	union {
++		/** index per sub-filesystem, to prevent collisions */
++		struct fscache_cookie *subfs;
++		/** index for each mountpoint, parent of the inode-index */
++		struct fscache_cookie *mnt;
++	} fscache;
++#endif
+ };
+ 
+ static inline struct fuse_conn *get_fuse_conn_super(struct super_block *sb)
+-- 
+1.9.3
+
